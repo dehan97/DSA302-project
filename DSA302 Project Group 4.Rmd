@@ -1,0 +1,320 @@
+---
+title: "DSA302 Project Final"
+author: "G2 Group 4"
+date: "11/8/2020"
+output: word_document
+---
+Part 1
+```{r}
+#read the data
+ZCBP=read.csv("C:/Users/Austin Lim/Desktop/SMU/AY2021/DSA302/Project/ZCBP.txt", sep="")
+
+#exploratory data analysis
+table(is.na(ZCBP))
+summary(ZCBP)
+head(ZCBP,5)
+
+#prepare the data
+ZCBP=dplyr::arrange(ZCBP,time)
+```
+(1)Plotting of zero coupon bond prices against the maturities of the bonds
+```{r}
+plot(ZCBP$time,ZCBP$price,
+     main = "Plot of Zero Coupon Bond (ZCB) Prices against their Maturity",
+     xlab = "Maturity of ZCB",
+     ylab = "Price of ZCB")
+```
+(2)Use equation 3 to generate the forward rates
+```{r}
+n=nrow(ZCBP)
+f0=-log(0.01*ZCBP$price[1])/ZCBP$time[1]
+frate=-1*(log(ZCBP[2:n,-1])-log(ZCBP[1:(n-1),-1]))/(ZCBP[2:n,1]-ZCBP[1:(n-1),1])
+frate=c(f0,frate)
+
+plot(ZCBP$time,frate,
+     main = "Plot of Forward Rates against Maturity",
+     xlab = "Maturity of ZCB",
+     ylab = "Forward Rates")
+```
+(3)Smoothing the forward rates using optim()
+```{r}
+# write a function to calculate the sum of squares
+sumSqMin1 <- function(par, data) {
+  sum((frate-(par[1]+par[2]*data[,1]+par[3]*(data[,1])^2))^2)
+}
+sumSqMin2 <- function(par, data) {
+  sum((frate-(par[1]+par[2]*data[,1]+par[3]*(data[,1])^2+par[4]*(data[,1])^3))^2)
+}
+start1=c(0,0,0)
+start2=c(0,0,0,0)
+opt1 = optim(start1,sumSqMin1,data=ZCBP,hessian=T,method="Nelder-Mead")
+opt2 = optim(start2,sumSqMin2,data=ZCBP,hessian=T,method="Nelder-Mead")
+
+frquad = opt1$par[1]+opt1$par[2]*ZCBP$time+opt1$par[3]*(ZCBP$time)^2
+frcubic = opt2$par[1]+opt2$par[2]*ZCBP$time+opt2$par[3]*(ZCBP$time)^2+opt2$par[4]*(ZCBP$time)^3
+
+plot(ZCBP$time,frate,
+     main = "Plot of Forward Rates against Maturity",
+     xlab = "Maturity of ZCB",
+     ylab = "Forward Rates")
+lines(ZCBP$time,frquad, col="red",lwd=2)
+lines(ZCBP$time,frcubic, col="green",lwd=2)
+legend("bottomleft",c("empirical","quadratic","cubic"),lty=c(1,1,1),col=c("black","red","green"))
+```
+(4)Estimate the empirical spot rates for t in (t1, tn) using equation (4)
+```{r}
+breaks=c(0,as.numeric(ZCBP$time))
+grid=seq(0.37,29.12,0.01)
+srate=NULL
+
+for(i in 1:length(grid)){
+  srate[i]=(max(cumsum(frate[1:(findInterval(grid[i],breaks)-1)]*diff(breaks[1:findInterval(grid[i],breaks)])))+frate[findInterval(grid[i],breaks)]*(grid[i]-breaks[findInterval(grid[i],breaks)]))/grid[i]
+}
+
+grid=as.data.frame(grid)
+plot(grid$grid,srate,type = "l",
+     main = "Plot of Spot Rates against Maturity",
+     xlab = "Maturity of ZCB",
+     ylab = "Spot Rates")
+```
+(5)Smoothing the spot rates using optim()
+```{r}
+sumSqMin3 <- function(par, data) {
+  sum((srate-(par[1]+par[2]*data[,1]+par[3]*(data[,1])^2))^2)
+}
+sumSqMin4 <- function(par, data) {
+  sum((srate-(par[1]+par[2]*data[,1]+par[3]*(data[,1])^2+par[4]*(data[,1])^3))^2)
+}
+
+start3=c(0,0,0)
+start4=c(0,0,0,0)
+opt3 = optim(start3,sumSqMin3,data=grid,hessian=T,method="Nelder-Mead")
+opt4 = optim(start4,sumSqMin4,data=grid,hessian=T,method="Nelder-Mead")
+
+srquad = opt3$par[1]+opt3$par[2]*grid$grid+opt3$par[3]*(grid$grid)^2
+srcubic = opt4$par[1]+opt4$par[2]*grid$grid+opt4$par[3]*(grid$grid)^2+opt4$par[4]*(grid$grid)^3
+
+plot(grid$grid,srate,type = "l",
+     main = "Plot of Spot Rates against Maturity",
+     xlab = "Maturity of ZCB",
+     ylab = "Spot Rates")
+lines(grid$grid,srquad,col="red",lwd=2)
+lines(grid$grid,srcubic,col="green",lwd=2)
+legend("bottomright",c("Empirical","Quadratic","Cubic"),lty=c(1,1,1),col = c("black","red","green"))
+```
+(6)Comments
+```{r}
+options(scipen = 999)
+opt3$value
+opt4$value
+```
+
+Part 2
+```{r}
+#read the data
+library(xts,quietly = T)
+ZCBYF86=read.csv("C:/Users/Austin Lim/Desktop/SMU/AY2021/DSA302/Project/ZCBYF86.csv")
+table(is.na(ZCBYF86))
+
+#prepare the data
+date=as.Date(ZCBYF86$Date,format="%d/%m/%Y")
+ZCBYF86=cbind(date,ZCBYF86[,-1])
+ZCBYF86.xts=xts(ZCBYF86[,-1],order.by=ZCBYF86[,1])
+mat=as.numeric(c(1:30))
+n=nrow(ZCBYF86.xts)
+```
+(1)Plot the data in a suitable way
+```{r}
+#rate against time: all bonds
+library(ggplot2,quietly = T)
+library(reshape2,quietly = T)
+df <- melt(ZCBYF86 ,  id.vars = 'date', variable.name = 'series');
+ggplot(df, aes(date,value)) + geom_line(aes(colour = series)) + labs(y="Yield (%)", x = "Time (Year)", title = "Yield Curves of ZCBYF86")
+
+#rate against time: short term vs long term bonds
+plot(ZCBYF86.xts[,c(1,30)],main="Short vs Long Term Bonds")
+
+#rate against maturity
+par(mfrow=c(1,2))
+plot(mat,as.numeric(ZCBYF86.xts[1,]),type ="l",
+     main = "1986-01-02",
+     xlab = "Maturity", ylab = "Spot Rate")
+plot(mat,as.numeric(ZCBYF86.xts["2000-08-01"]),type ="l",
+     main = "2000-08-01",
+     xlab = "Maturity", ylab = "Spot Rate")
+par(mfrow=c(1,1))
+```
+(2)Fit the NS and NSS models to the yield data by minimizing sum of squared errors.
+```{r}
+# write a function to calculate the sum of squares
+ns_sse <- function(par, maturity) {
+  sum((yields-((par[1])^2 + (par[2] + par[3]/(par[4])^2)*(1-exp(-(par[4])^2*maturity))/((par[4])^2*maturity) - (par[3]*exp(-(par[4])^2*maturity)/(par[4])^2)))^2)
+}
+nss_sse <- function(par, maturity) {
+  sum((yields-((par[1])^2 + (par[2] + par[3]/(par[4])^2)*(1-exp(-(par[4])^2*maturity))/((par[4])^2*maturity) - (par[3]*exp(-(par[4])^2*maturity)/(par[4])^2)+(par[5]/(par[6])^2*((1-exp(-(par[6])^2*maturity))/((par[6])^2*maturity)-exp(-(par[6])^2*maturity)))))^2)
+}
+
+# optimizing for 8650 days
+theta_ns=data.frame()
+theta_nss=data.frame()
+error_ns=data.frame()
+error_nss=data.frame()
+
+for(i in 1:n){
+  yields=as.numeric(ZCBYF86.xts[i,])
+  ns_model = optim(c(1,1,1,1),ns_sse,maturity=mat,hessian=T,method="BFGS")
+  nss_model = optim(c(1,1,1,1,1,1),nss_sse,maturity=mat,hessian=T,method="BFGS")
+  theta_ns=rbind(theta_ns,ns_model$par)
+  theta_nss=rbind(theta_nss,nss_model$par)
+  error_ns=rbind(error_ns,ns_model$value)
+  error_nss=rbind(error_nss,nss_model$value)
+}
+
+colnames(theta_ns)=c("beta0","theta1","theta2","beta3")
+colnames(theta_nss)=c("beta0","theta1","theta2","beta3","theta4","beta5")
+colnames(error_ns)="SSE_NS"
+colnames(error_nss)="SSE_NSS"
+
+theta_ns$theta0=(theta_ns$beta0)^2
+theta_ns$theta3=(theta_ns$beta3)^2
+theta_nss$theta0=(theta_nss$beta0)^2
+theta_nss$theta3=(theta_nss$beta3)^2
+theta_nss$theta5=(theta_nss$beta5)^2
+
+#write to csv for convenience 
+errors=cbind(error_ns,error_nss)
+##write.csv(theta_ns,"theta_ns.csv",row.names = F)
+##write.csv(theta_nss,"theta_nss.csv",row.names = F)
+##write.csv(errors,"errors.csv",row.names = F)
+
+#to use the csv files instead of optimizing again
+##theta_nss=read.csv("C:/Users/Austin Lim/Desktop/theta_nss.csv")
+##errors=read.csv("C:/Users/Austin Lim/Desktop/errors.csv")
+##theta_ns=read.csv("C:/Users/Austin Lim/Desktop/theta_ns.csv")
+
+# selection criteria 
+aic_ns=n*log(errors$SSE_NS)+2*4;aic_nss=n*log(errors$SSE_NSS)+2*6
+bic_ns=n*log(errors$SSE_NS)+log(n)*4;bic_nss=n*log(errors$SSE_NSS)+log(n)*6
+criteria=as.data.frame(cbind(aic_ns,aic_nss,bic_ns,bic_nss));colnames(criteria)=c("AIC_NS","AIC_NSS","BIC_NS","BIC_NSS")
+
+diff_sse=errors$SSE_NS-errors$SSE_NSS
+diff_AIC=criteria$AIC_NS-criteria$AIC_NSS
+diff_BIC=criteria$BIC_NS-criteria$BIC_NSS
+
+par(mfrow=c(1,3))
+plot(index(ZCBYF86.xts),diff_sse,type = "l",
+     main = "Difference(SSE)",
+     xlab = "Date", ylab = "Diff(SSE)");abline(h=0,col=2)
+plot(index(ZCBYF86.xts),diff_AIC,type = "l",
+     main = "Difference(AIC)",
+     xlab = "Date", ylab = "Diff(AIC)");abline(h=0,col=2)
+plot(index(ZCBYF86.xts),diff_BIC,type = "l",
+     main = "Difference(BIC)",
+     xlab = "Date", ylab = "Diff(BIC)");abline(h=0,col=2)
+par(mfrow=c(1,1))
+```
+(3)What information could be extracted from theta?
+```{r}
+#filtering days where NS fitted better
+indexes=which(errors$SSE_NSS>errors$SSE_NS)
+filtered=ZCBYF86.xts[indexes,]
+filtered_thetas=theta_ns[indexes,]
+
+#theta0
+plot(index(filtered),filtered_thetas$theta0,type="l",col=2,
+     main = "Long Term Yield vs theta0 Comparison",
+     xlab ="Date",ylab = "theta0 or long term spot rate")
+lines(index(filtered),as.numeric(filtered[,30]))
+legend("topright",c("theta0","SVEN30"),lty = c(1,1),col = c(2,1))
+
+#theta1
+steepness_par=filtered_thetas$theta1
+steepness=as.numeric(sign(filtered[,2]-filtered[,1]))
+plot(steepness_par,steepness,xlim=c(-50,50))
+x=seq(-50,50,2)
+y=NULL
+for(i in 1:length(x)){
+  if(x[i]<0){
+    y[i]=1
+  }
+  else{
+    y[i]=-1
+  }
+}
+lines(x,y,col=2)
+
+#verifying theta1
+plot(mat,filtered[95,],type = "l",xlab = "maturity",ylab = "spot rate",ylim=c(8.5,9.5))
+lines(mat,filtered[96,],col=2)
+legend("topright",c("theta1<0","theta1>0"),lty = c(1,1),col = c(1,2))
+
+#theta2/theta3
+hump=filtered_thetas$theta2/filtered_thetas$theta3
+hump_size=NULL
+for(i in 1:nrow(filtered)){
+  if(filtered[i,1]>filtered[i,2]){
+    hump_size[i]=as.numeric(min(filtered[i,])-filtered[i,1])
+  }
+  else{
+    hump_size[i]=as.numeric(max(filtered[i,])-filtered[i,1])
+  }
+}
+
+hump_df=as.data.frame(cbind(hump[(hump>=-10)&(hump<=20)],hump_size[(hump>=-10)&(hump<=20)]));colnames(hump_df)=c("hump_par","hump_size")
+ggplot(hump_df, aes(hump_par,hump_size)) +
+  geom_point() +
+  ylim(-1,5)+
+  xlab("hump_par")+
+  ylab("hump_size")+
+  stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE),se=F)
+
+#verifying theta2/theta3
+plot(mat,filtered[345,],type = "l",xlab = "maturity",ylab = "spot rate")
+lines(mat,filtered[12,],col=2)
+lines(mat,filtered[13,],col=3)
+lines(mat,filtered[349,],col=4)
+legend("bottomright",c("very negative","0-","0+","very positive"),lty = c(1,1,1,1),col = c(1,2,3,4))
+```
+Conclusions (Future Opportunities):
+```{r}
+#parameter stability
+par(mfrow=c(2,2))
+plot(index(ZCBYF86.xts),theta_ns$theta0, type="l", xlab="Date",ylab="theta0", main="theta0")
+plot(index(ZCBYF86.xts),theta_ns$theta1, type="l", xlab="Date",ylab="theta1", main="theta1",ylim = c(-300,max(theta_ns$theta1)))
+plot(index(ZCBYF86.xts),theta_ns$theta2, type="l", xlab="Date",ylab="theta2", main="theta2")
+plot(index(ZCBYF86.xts),theta_ns$theta3, type="l", xlab="Date",ylab="theta3", main="theta3",ylim = c(0,400))
+par(mfrow=c(1,1))
+
+#finding volatilty of parameters?
+library(dplyr)
+theta_nss%>%
+  summarise(sd0=sd(theta0),
+            sd1=sd(theta1),
+            sd2=sd(theta2),
+            sd3=sd(theta3),
+            sd4=sd(theta4),
+            sd5=sd(theta5))
+theta_ns%>%
+  summarise(sd0=sd(theta0),
+            sd1=sd(theta1),
+            sd2=sd(theta2),
+            sd3=sd(theta3))
+
+library(xts)
+library(MASS)
+library(fGarch)
+theta_nss.xts=xts(theta_nss[,c(7,2,3,8,5,9)],order.by = index(ZCBYF86.xts))
+
+# for theta0 for example:
+theta0=as.numeric(theta_nss.xts[,1])
+m0_arch=garchFit(~garch(4,0),data=theta0,trace=F)
+summary(m0_arch)
+par(mfrow=c(2,2))
+plot(index(ZCBYF86.xts),volatility(m0_arch),type="l",xlab="Year",ylab="Volatility",main="ARCH(4) Volatility, normal errors")
+plot(index(ZCBYF86.xts),residuals(m0_arch,standardize=T),type="l",xlab="Year",ylab="Std Residual",main="ARCH(4) Std Res, normal errors")
+qqnorm(residuals(m0_arch,standardize=T),datax=T,main="QQnorm of std residuals, normal errors")
+qqline(residuals(m0_arch,standardize=T),datax=T,col="red")
+pred=predict(m0_arch,n.ahead=100)
+plot(1:100,pred$standardDeviation,type="l",xlab="Days",main="Predicted volatility over 100 days")
+par(mfrow=c(1,1))
+```
